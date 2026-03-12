@@ -1,44 +1,30 @@
 # Delicious Cafe POS
 
 ## Current State
-The app has all major modules built: Login/Register, Admin Dashboard, Item Management, Category Management, Inventory Management, Sales Reports, User Management, Cashier POS, and Kitchen Display. However there is a critical auth bug causing a blank screen: `useActor.ts` reads identity from `useInternetIdentity` while the app authenticates via `useEmailAuth`. This means all authenticated backend calls use an anonymous identity, breaking the entire app.
-
-Additional gaps:
-- AdminLayout, CashierPage, KitchenDisplay call `useInternetIdentity().clear` for logout instead of `useEmailAuth().logout`
-- `main.tsx` is missing `EmailAuthProvider` wrapping
-- Kitchen Display only shows `pending` and `inprogress` orders; `done` (Ready) orders are invisible
-- Cashier has no way to cancel a pending order or mark an order as paid (complete the transaction)
-- No printable receipt
-- Sales Reports lacks quick date-range shortcuts (Today, This Week, This Month)
-- Order status labels don't match user requirements: pending/inprogress/done/paid should display as Pending/Preparing/Ready/Completed
+CashierPage exists with: single order cart, category filter bar, menu grid, payment selection, printable receipt, and active orders strip. Backend supports createOrder, updateOrderStatus, getAllOrders, etc.
 
 ## Requested Changes (Diff)
 
 ### Add
-- `EmailAuthProvider` wrapping in `main.tsx`
-- Quick filter buttons in SalesReports: Today, This Week, This Month
-- Cancel order button in CashierPage (only visible when order status = pending)
-- "Mark as Paid" flow in CashierPage: when order status = done (Ready), cashier can select payment method and confirm payment → updates status to `paid`
-- Printable receipt dialog triggered after marking as paid
-- Kitchen Display column for `done` (Ready) status orders with a "Served" button to mark `paid`
-- Status label mapping everywhere: pending→Pending, inprogress→Preparing, done→Ready, paid→Completed
+- Multiple simultaneous open orders with tab switcher (e.g. Order #1, Order #2, + New)
+- Per-item note field in cart rows (e.g. "No sugar")
+- Order number badge (#001 style) visible on each order tab
+- Edit active order: cashier can reopen a Pending order back into the cart to modify it
 
 ### Modify
-- `useActor.ts`: replace `useInternetIdentity` with `useEmailAuth` for identity
-- `main.tsx`: add `EmailAuthProvider` around app
-- `AdminLayout.tsx`: replace `useInternetIdentity().clear` with `useEmailAuth().logout`
-- `CashierPage.tsx`: replace `useInternetIdentity().clear` with `useEmailAuth().logout`; add active orders panel showing orders placed by this session with cancel and pay options
-- `KitchenDisplay.tsx`: replace `useInternetIdentity().clear` with `useEmailAuth().logout`; add Ready column
-- `SalesReports.tsx`: add quick filter buttons
+- CashierPage: replace single-cart state with multi-tab order state
+- Cart panel: add per-item note input below each cart row
+- Active orders strip: allow clicking a Pending order to re-edit it in a tab
+- Place Order button: sends order and keeps tab open showing live status
 
 ### Remove
-- Nothing
+- Nothing removed
 
 ## Implementation Plan
-1. Fix `main.tsx`: wrap with `EmailAuthProvider`
-2. Fix `useActor.ts`: use `useEmailAuth().identity` instead of `useInternetIdentity().identity`
-3. Fix all logout calls in AdminLayout, CashierPage, KitchenDisplay to use `useEmailAuth().logout`
-4. Update CashierPage: add active orders list with cancel (pending only) and pay (done/ready only) actions; add receipt print dialog
-5. Update KitchenDisplay: show Pending/Preparing/Ready columns; Ready orders have "Served" button
-6. Update SalesReports: add Today/This Week/This Month quick filter buttons
-7. Apply consistent status label display across all pages
+1. Refactor CashierPage to use a `tabs` state: array of draft orders, each with id, items[], orderNote, and optional backend orderId + status
+2. Add tab bar above category filter: shows each open draft as a clickable tab + New Order button
+3. Add per-item note input in cart rows (small text field below item name/price)
+4. When Place Order is clicked: submit to backend, update tab state with returned orderId and poll status
+5. Allow switching between tabs without losing cart state
+6. Active orders section: clicking a Pending order loads it into a new editable tab
+7. Cancel clears tab; Mark Paid opens receipt dialog
