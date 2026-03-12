@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Coffee, LogOut } from "lucide-react";
+import { CheckCircle, Clock, Coffee, LogOut } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { type OrderEntry, OrderStatus } from "../../backend";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useActor } from "../../hooks/useActor";
-import { useInternetIdentity } from "../../hooks/useInternetIdentity";
+import { useEmailAuth } from "../../hooks/useEmailAuth";
 
 function playBeep() {
   try {
@@ -33,7 +34,7 @@ function timeAgo(nanoseconds: bigint): string {
 
 export default function KitchenDisplay() {
   const { actor } = useActor();
-  const { clear } = useInternetIdentity();
+  const { logout } = useEmailAuth();
   const qc = useQueryClient();
   const [tick, setTick] = useState(0);
 
@@ -51,23 +52,35 @@ export default function KitchenDisplay() {
     refetchInterval: 5000,
   });
 
-  // Proper new order detection: track prev known IDs
+  const { data: readyOrders = [] } = useQuery({
+    queryKey: ["kitchen", "done"],
+    queryFn: () => actor!.getOrdersByStatus(OrderStatus.done),
+    enabled: !!actor,
+    refetchInterval: 5000,
+  });
+
+  // New order beep detection
   const prevIds = useRef<Set<string>>(new Set());
   const initialized = useRef(false);
 
   useEffect(() => {
     if (!initialized.current) {
-      // First load: just record existing IDs, don't beep
-      for (const o of [...pendingOrders, ...inProgressOrders]) {
+      for (const o of [...pendingOrders, ...inProgressOrders, ...readyOrders]) {
         prevIds.current.add(o.id.toString());
       }
-      if (pendingOrders.length > 0 || inProgressOrders.length > 0) {
+      if (
+        pendingOrders.length > 0 ||
+        inProgressOrders.length > 0 ||
+        readyOrders.length > 0
+      ) {
         initialized.current = true;
       }
       return;
     }
     const allIds = new Set(
-      [...pendingOrders, ...inProgressOrders].map((o) => o.id.toString()),
+      [...pendingOrders, ...inProgressOrders, ...readyOrders].map((o) =>
+        o.id.toString(),
+      ),
     );
     let newCount = 0;
     for (const id of allIds) {
@@ -78,9 +91,8 @@ export default function KitchenDisplay() {
         setTimeout(() => playBeep(), i * 400);
     }
     prevIds.current = allIds;
-  }, [pendingOrders, inProgressOrders]);
+  }, [pendingOrders, inProgressOrders, readyOrders]);
 
-  // Update time display every minute
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 60000);
     return () => clearInterval(interval);
@@ -97,27 +109,35 @@ export default function KitchenDisplay() {
 
   const OrderCard = ({
     order,
-    isPending,
-  }: { order: OrderEntry; isPending: boolean }) => (
+    column,
+  }: { order: OrderEntry; column: "pending" | "inprogress" | "done" }) => (
     <div
       data-ocid="kitchen.order.card"
       className={`rounded-xl border p-4 space-y-3 ${
-        isPending
+        column === "pending"
           ? "border-primary/50 bg-card ring-1 ring-primary/30"
-          : "border-border bg-secondary/50"
+          : column === "inprogress"
+            ? "border-yellow-500/40 bg-yellow-500/5"
+            : "border-green-500/40 bg-green-500/5"
       }`}
     >
       <div className="flex justify-between items-start">
         <div>
-          <span
-            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-              isPending
-                ? "bg-primary/20 text-primary"
-                : "bg-yellow-400/20 text-yellow-400"
+          <Badge
+            className={`text-xs font-semibold ${
+              column === "pending"
+                ? "bg-primary/20 text-primary hover:bg-primary/20"
+                : column === "inprogress"
+                  ? "bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/20"
+                  : "bg-green-500/20 text-green-400 hover:bg-green-500/20"
             }`}
           >
-            {isPending ? "NEW" : "IN PROGRESS"}
-          </span>
+            {column === "pending"
+              ? "NEW"
+              : column === "inprogress"
+                ? "PREPARING"
+                : "READY"}
+          </Badge>
           <p className="font-bold text-lg mt-1">
             #{order.orderNumber.toString()}
           </p>
@@ -142,14 +162,14 @@ export default function KitchenDisplay() {
         ))}
       </ul>
 
-      {order.notes && (
+      {order.notes && order.notes !== "[CANCELLED]" && (
         <p className="text-xs text-muted-foreground border-t border-border pt-2">
           Note: {order.notes}
         </p>
       )}
 
       <div className="pt-1">
-        {isPending ? (
+        {column === "pending" && (
           <Button
             data-ocid="kitchen.order.start.button"
             className="w-full"
@@ -158,33 +178,49 @@ export default function KitchenDisplay() {
             }
             disabled={updateMut.isPending}
           >
-            Start
+            Start Preparing
           </Button>
-        ) : (
+        )}
+        {column === "inprogress" && (
           <Button
-            data-ocid="kitchen.order.done.button"
+            data-ocid="kitchen.order.ready.button"
             variant="outline"
-            className="w-full border-green-500 text-green-400 hover:bg-green-500/20"
+            className="w-full border-yellow-500 text-yellow-400 hover:bg-yellow-500/20"
             onClick={() =>
               updateMut.mutate({ id: order.id, status: OrderStatus.done })
             }
             disabled={updateMut.isPending}
           >
-            Done
+            Mark Ready
+          </Button>
+        )}
+        {column === "done" && (
+          <Button
+            data-ocid="kitchen.order.complete.button"
+            variant="outline"
+            className="w-full border-green-500 text-green-400 hover:bg-green-500/20"
+            onClick={() =>
+              updateMut.mutate({ id: order.id, status: OrderStatus.paid })
+            }
+            disabled={updateMut.isPending}
+          >
+            <CheckCircle className="w-4 h-4 mr-2" />
+            Mark Complete
           </Button>
         )}
       </div>
     </div>
   );
 
-  const allOrders = [...pendingOrders, ...inProgressOrders];
+  const totalActive =
+    pendingOrders.length + inProgressOrders.length + readyOrders.length;
 
   return (
     <div className="min-h-screen flex flex-col" data-ocid="kitchen.section">
       <header className="h-14 flex items-center px-4 border-b border-border bg-card shrink-0">
         <Coffee className="w-5 h-5 text-primary mr-2" />
         <span className="font-bold">Kitchen Display</span>
-        <span className="ml-3 text-sm text-muted-foreground">
+        <span className="ml-3 text-sm">
           {pendingOrders.length > 0 && (
             <span className="text-primary font-semibold">
               {pendingOrders.length} new
@@ -192,7 +228,12 @@ export default function KitchenDisplay() {
           )}
           {inProgressOrders.length > 0 && (
             <span className="ml-2 text-yellow-400">
-              {inProgressOrders.length} in progress
+              {inProgressOrders.length} preparing
+            </span>
+          )}
+          {readyOrders.length > 0 && (
+            <span className="ml-2 text-green-400">
+              {readyOrders.length} ready
             </span>
           )}
         </span>
@@ -201,14 +242,14 @@ export default function KitchenDisplay() {
           size="icon"
           className="ml-auto"
           data-ocid="kitchen.logout.button"
-          onClick={clear}
+          onClick={logout}
         >
           <LogOut className="w-4 h-4" />
         </Button>
       </header>
 
       <main className="flex-1 p-4">
-        {allOrders.length === 0 ? (
+        {totalActive === 0 ? (
           <div
             data-ocid="kitchen.orders.empty_state"
             className="flex flex-col items-center justify-center h-64 text-muted-foreground"
@@ -217,24 +258,93 @@ export default function KitchenDisplay() {
             <p className="text-sm">No active orders. Waiting for orders...</p>
           </div>
         ) : (
-          <div
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-            data-ocid="kitchen.orders.list"
-          >
-            {pendingOrders.map((order) => (
-              <OrderCard
-                key={order.id.toString()}
-                order={order}
-                isPending={true}
-              />
-            ))}
-            {inProgressOrders.map((order) => (
-              <OrderCard
-                key={order.id.toString()}
-                order={order}
-                isPending={false}
-              />
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Pending Column */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-2 h-2 rounded-full bg-primary" />
+                <h2 className="font-semibold text-sm">Pending</h2>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {pendingOrders.length}
+                </span>
+              </div>
+              <div className="space-y-3" data-ocid="kitchen.pending.list">
+                {pendingOrders.length === 0 ? (
+                  <p
+                    className="text-xs text-muted-foreground text-center py-8"
+                    data-ocid="kitchen.pending.empty_state"
+                  >
+                    No pending orders
+                  </p>
+                ) : (
+                  pendingOrders.map((order) => (
+                    <OrderCard
+                      key={order.id.toString()}
+                      order={order}
+                      column="pending"
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Preparing Column */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                <h2 className="font-semibold text-sm">Preparing</h2>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {inProgressOrders.length}
+                </span>
+              </div>
+              <div className="space-y-3" data-ocid="kitchen.preparing.list">
+                {inProgressOrders.length === 0 ? (
+                  <p
+                    className="text-xs text-muted-foreground text-center py-8"
+                    data-ocid="kitchen.preparing.empty_state"
+                  >
+                    No orders preparing
+                  </p>
+                ) : (
+                  inProgressOrders.map((order) => (
+                    <OrderCard
+                      key={order.id.toString()}
+                      order={order}
+                      column="inprogress"
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Ready Column */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-2 h-2 rounded-full bg-green-400" />
+                <h2 className="font-semibold text-sm">Ready</h2>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {readyOrders.length}
+                </span>
+              </div>
+              <div className="space-y-3" data-ocid="kitchen.ready.list">
+                {readyOrders.length === 0 ? (
+                  <p
+                    className="text-xs text-muted-foreground text-center py-8"
+                    data-ocid="kitchen.ready.empty_state"
+                  >
+                    No orders ready
+                  </p>
+                ) : (
+                  readyOrders.map((order) => (
+                    <OrderCard
+                      key={order.id.toString()}
+                      order={order}
+                      column="done"
+                    />
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         )}
       </main>

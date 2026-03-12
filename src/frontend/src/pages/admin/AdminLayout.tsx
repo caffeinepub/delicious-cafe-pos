@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
-import { useInternetIdentity } from "../../hooks/useInternetIdentity";
+import { useEmailAuth } from "../../hooks/useEmailAuth";
 import CategoryManagement from "./CategoryManagement";
 import Dashboard from "./Dashboard";
 import InventoryManagement from "./InventoryManagement";
@@ -38,7 +38,7 @@ const navItems: { id: Tab; label: string; icon: React.ElementType }[] = [
 ];
 
 export default function AdminLayout() {
-  const { clear } = useInternetIdentity();
+  const { logout } = useEmailAuth();
   const [active, setActive] = useState<Tab>("dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -100,7 +100,7 @@ export default function AdminLayout() {
           <button
             type="button"
             data-ocid="admin.logout.button"
-            onClick={clear}
+            onClick={logout}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors"
           >
             <LogOut className="w-4 h-4" />

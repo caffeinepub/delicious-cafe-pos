@@ -11,12 +11,44 @@ import {
 import { Input } from "../../components/ui/input";
 import { useActor } from "../../hooks/useActor";
 
+type QuickFilter = "today" | "week" | "month" | "custom";
+
+function getQuickRange(filter: QuickFilter): { start: string; end: string } {
+  const today = new Date();
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  if (filter === "today") {
+    const s = fmt(today);
+    return { start: s, end: s };
+  }
+  if (filter === "week") {
+    const start = new Date(today);
+    start.setDate(today.getDate() - today.getDay());
+    return { start: fmt(start), end: fmt(today) };
+  }
+  if (filter === "month") {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { start: fmt(start), end: fmt(today) };
+  }
+  return { start: fmt(today), end: fmt(today) };
+}
+
 export default function SalesReports() {
   const { actor } = useActor();
-  const today = new Date();
-  const [startDate, setStartDate] = useState(today.toISOString().split("T")[0]);
-  const [endDate, setEndDate] = useState(today.toISOString().split("T")[0]);
-  const [applied, setApplied] = useState({ start: startDate, end: endDate });
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [startDate, setStartDate] = useState(todayStr);
+  const [endDate, setEndDate] = useState(todayStr);
+  const [applied, setApplied] = useState({ start: todayStr, end: todayStr });
+  const [activeFilter, setActiveFilter] = useState<QuickFilter>("today");
+
+  const applyQuickFilter = (filter: QuickFilter) => {
+    setActiveFilter(filter);
+    if (filter !== "custom") {
+      const range = getQuickRange(filter);
+      setStartDate(range.start);
+      setEndDate(range.end);
+      setApplied(range);
+    }
+  };
 
   const toNano = (dateStr: string, end = false) => {
     const d = new Date(dateStr);
@@ -48,38 +80,69 @@ export default function SalesReports() {
 
   const avg = orders.length > 0 ? revenue / orders.length : 0;
 
+  const quickFilters: { id: QuickFilter; label: string }[] = [
+    { id: "today", label: "Today" },
+    { id: "week", label: "This Week" },
+    { id: "month", label: "This Month" },
+    { id: "custom", label: "Custom" },
+  ];
+
   return (
     <div className="space-y-5" data-ocid="reports.section">
       <Card>
-        <CardContent className="p-4 flex flex-wrap gap-3 items-end">
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">From</p>
-            <Input
-              id="reports-start-date"
-              data-ocid="reports.start.input"
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-40"
-            />
+        <CardContent className="p-4 space-y-3">
+          {/* Quick filter tabs */}
+          <div className="flex gap-2" data-ocid="reports.quickfilter.tab">
+            {quickFilters.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                data-ocid={`reports.${f.id}.tab`}
+                onClick={() => applyQuickFilter(f.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeFilter === f.id
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground mb-1">To</p>
-            <Input
-              id="reports-end-date"
-              data-ocid="reports.end.input"
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-40"
-            />
-          </div>
-          <Button
-            data-ocid="reports.apply.button"
-            onClick={() => setApplied({ start: startDate, end: endDate })}
-          >
-            Apply
-          </Button>
+
+          {/* Date pickers */}
+          {activeFilter === "custom" && (
+            <div className="flex flex-wrap gap-3 items-end">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">From</p>
+                <Input
+                  id="reports-start-date"
+                  data-ocid="reports.start.input"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-40"
+                />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">To</p>
+                <Input
+                  id="reports-end-date"
+                  data-ocid="reports.end.input"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-40"
+                />
+              </div>
+              <Button
+                data-ocid="reports.apply.button"
+                onClick={() => setApplied({ start: startDate, end: endDate })}
+              >
+                Apply
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
