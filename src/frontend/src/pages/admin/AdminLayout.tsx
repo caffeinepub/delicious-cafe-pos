@@ -12,8 +12,8 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import type { LoggedInUser } from "../../App";
 import { Button } from "../../components/ui/button";
-import { useEmailAuth } from "../../hooks/useEmailAuth";
 import CafeSettings from "./CafeSettings";
 import CategoryManagement from "./CategoryManagement";
 import Dashboard from "./Dashboard";
@@ -41,8 +41,15 @@ const navItems: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "settings", label: "Cafe Settings", icon: Settings },
 ];
 
-export default function AdminLayout() {
-  const { logout } = useEmailAuth();
+interface AdminLayoutProps {
+  onLogout: () => void;
+  currentUser: LoggedInUser;
+}
+
+export default function AdminLayout({
+  onLogout,
+  currentUser,
+}: AdminLayoutProps) {
   const [active, setActive] = useState<Tab>("dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -64,7 +71,7 @@ export default function AdminLayout() {
       case "reports":
         return <SalesReports />;
       case "users":
-        return <UserManagement />;
+        return <UserManagement currentUserEmail={currentUser.email} />;
       case "settings":
         return <CafeSettings />;
     }
@@ -103,10 +110,18 @@ export default function AdminLayout() {
           ))}
         </nav>
         <div className="p-3 border-t border-sidebar-border">
+          <div className="px-3 py-2 mb-1">
+            <p className="text-xs font-medium text-foreground truncate">
+              {currentUser.name}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {currentUser.email}
+            </p>
+          </div>
           <button
             type="button"
             data-ocid="admin.logout.button"
-            onClick={logout}
+            onClick={onLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-muted-foreground hover:bg-destructive/20 hover:text-destructive transition-colors"
           >
             <LogOut className="w-4 h-4" />

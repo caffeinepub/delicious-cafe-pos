@@ -34,10 +34,17 @@ actor {
     };
   };
 
+  public type StaffRole = {
+    #admin;
+    #cashier;
+    #kitchenStaff;
+  };
+
   public type UserProfile = {
     name : Text;
   };
 
+  // UserAccount keeps original fields for stable compatibility
   public type UserAccount = {
     email : Text;
     name : Text;
@@ -51,6 +58,7 @@ actor {
     name : Text;
     phone : Text;
     principalId : Text;
+    role : StaffRole;
   };
 
   public type Category = {
@@ -87,6 +95,7 @@ actor {
     #card;
   };
 
+  // OrderEntry keeps original fields for stable compatibility
   public type OrderEntry = {
     id : Nat;
     orderNumber : Nat;
@@ -96,6 +105,18 @@ actor {
     paymentMethod : PaymentMethod;
     notes : Text;
     createdAt : Int;
+  };
+
+  public type OrderEntryWithCreator = {
+    id : Nat;
+    orderNumber : Nat;
+    items : [OrderItem];
+    totalAmount : Float;
+    status : OrderStatus;
+    paymentMethod : PaymentMethod;
+    notes : Text;
+    createdAt : Int;
+    createdBy : Text;
   };
 
   public type TopSellingItem = {
@@ -119,10 +140,44 @@ actor {
   let userProfiles = Map.empty<Principal, UserProfile>();
   let userAccounts = Map.empty<Text, UserAccount>();
 
+  // Separate stable Maps for new fields (avoids upgrade compatibility issues)
+  let userRoles = Map.empty<Text, StaffRole>();
+  let orderCreators = Map.empty<Nat, Text>();
+
   var cafeSettings : CafeSettings = {
     name = "Delicious Cafe";
     address = "";
     phone = "";
+  };
+
+  // ---- Helpers ----
+
+  func getRole(email : Text) : StaffRole {
+    switch (userRoles.get(email)) {
+      case (null) { #cashier };
+      case (?r) { r };
+    };
+  };
+
+  func getCreator(orderId : Nat) : Text {
+    switch (orderCreators.get(orderId)) {
+      case (null) { "" };
+      case (?c) { c };
+    };
+  };
+
+  func toOrderEntryWithCreator(o : OrderEntry) : OrderEntryWithCreator {
+    {
+      id = o.id;
+      orderNumber = o.orderNumber;
+      items = o.items;
+      totalAmount = o.totalAmount;
+      status = o.status;
+      paymentMethod = o.paymentMethod;
+      notes = o.notes;
+      createdAt = o.createdAt;
+      createdBy = getCreator(o.id);
+    };
   };
 
   // ---- Cafe Settings ----
@@ -140,19 +195,68 @@ actor {
 
   // ---- Email/Password Account Management ----
 
+  public query (_) func hasAdminAccount() : async Bool {
+    for ((email, _) in userAccounts.entries()) {
+      switch (userRoles.get(email)) {
+        case (?#admin) { return true };
+        case (_) {};
+      };
+    };
+    false;
+  };
+
+  // Register first admin only (when no admin exists)
   public shared (_) func registerAccount(email : Text, name : Text, phone : Text, passwordHash : Text, principalId : Text) : async Text {
+    var adminExists = false;
+    for ((e, _) in userAccounts.entries()) {
+      switch (userRoles.get(e)) {
+        case (?#admin) { adminExists := true };
+        case (_) {};
+      };
+    };
+    if (adminExists) {
+      return "Admin already exists. Use Admin Panel to create staff accounts.";
+    };
     switch (userAccounts.get(email)) {
       case (?_) { return "Email already registered" };
       case (null) {
-        let account : UserAccount = {
-          email;
-          name;
-          phone;
-          passwordHash;
-          principalId;
-        };
+        let account : UserAccount = { email; name; phone; passwordHash; principalId };
         userAccounts.add(email, account);
+        userRoles.add(email, #admin);
         return "";
+      };
+    };
+  };
+
+  // Admin creates staff accounts (Cashier or KitchenStaff)
+  public shared ({ caller }) func adminCreateStaffAccount(email : Text, name : Text, phone : Text, passwordHash : Text, role : StaffRole) : async Text {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can create staff accounts");
+    };
+    switch (role) {
+      case (#admin) { Runtime.trap("Cannot create additional admin accounts via this endpoint") };
+      case (_) {};
+    };
+    switch (userAccounts.get(email)) {
+      case (?_) { return "Email already registered" };
+      case (null) {
+        let account : UserAccount = { email; name; phone; passwordHash; principalId = "" };
+        userAccounts.add(email, account);
+        userRoles.add(email, role);
+        return "";
+      };
+    };
+  };
+
+  public shared ({ caller }) func adminDeleteAccount(email : Text) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can delete accounts");
+    };
+    switch (userAccounts.get(email)) {
+      case (null) { Runtime.trap("Account not found") };
+      case (_) {
+        userAccounts.remove(email);
+        userRoles.remove(email);
       };
     };
   };
@@ -164,6 +268,13 @@ actor {
     };
   };
 
+  public query (_) func getAccountRole(email : Text) : async ?StaffRole {
+    switch (userAccounts.get(email)) {
+      case (null) { null };
+      case (_) { ?getRole(email) };
+    };
+  };
+
   public shared ({ caller }) func adminResetPassword(email : Text, newPasswordHash : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can reset passwords");
@@ -171,11 +282,7 @@ actor {
     switch (userAccounts.get(email)) {
       case (null) { Runtime.trap("Account not found") };
       case (?account) {
-        let updated : UserAccount = {
-          account with
-          passwordHash = newPasswordHash;
-        };
-        userAccounts.add(email, updated);
+        userAccounts.add(email, { account with passwordHash = newPasswordHash });
       };
     };
   };
@@ -186,7 +293,7 @@ actor {
     };
     userAccounts.values().toArray().map(
       func(a : UserAccount) : AccountInfo {
-        { email = a.email; name = a.name; phone = a.phone; principalId = a.principalId }
+        { email = a.email; name = a.name; phone = a.phone; principalId = a.principalId; role = getRole(a.email) }
       }
     );
   };
@@ -200,13 +307,6 @@ actor {
     userProfiles.get(caller);
   };
 
-  public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Can only view your own profile");
-    };
-    userProfiles.get(user);
-  };
-
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can save profiles");
@@ -214,7 +314,7 @@ actor {
     userProfiles.add(caller, profile);
   };
 
-  // ---- Category Management (Admin Only) ----
+  // ---- Category Management ----
 
   public shared ({ caller }) func createCategory(name : Text) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
@@ -232,9 +332,7 @@ actor {
     };
     switch (categories.get(categoryId)) {
       case (null) { Runtime.trap("Category not found") };
-      case (?_) {
-        categories.add(categoryId, { id = categoryId; name });
-      };
+      case (?_) { categories.add(categoryId, { id = categoryId; name }) };
     };
   };
 
@@ -252,7 +350,7 @@ actor {
     categories.values().toArray().sort(Category.compareById);
   };
 
-  // ---- Menu Item Management (Admin Only) ----
+  // ---- Menu Item Management ----
 
   public shared ({ caller }) func createMenuItem(name : Text, categoryId : Nat, price : Float, description : Text) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
@@ -314,7 +412,7 @@ actor {
 
   // ---- Order Management ----
 
-  public shared ({ caller }) func createOrder(items : [OrderItem], paymentMethod : PaymentMethod, notes : Text) : async Nat {
+  public shared ({ caller }) func createOrder(items : [OrderItem], paymentMethod : PaymentMethod, notes : Text, createdByEmail : Text) : async Nat {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can create orders");
     };
@@ -333,23 +431,9 @@ actor {
       createdAt = Time.now();
     };
     orders.add(nextOrderId, order);
-    updateStockForOrderItems(items);
+    orderCreators.add(nextOrderId, createdByEmail);
     nextOrderId += 1;
     order.id;
-  };
-
-  func updateStockForOrderItems(items : [OrderItem]) {
-    for (item in items.values()) {
-      switch (menuItems.get(item.menuItemId)) {
-        case (null) { Runtime.trap("Menu item not found") };
-        case (?menuItem) {
-          if (menuItem.stockQuantity < item.quantity) {
-            Runtime.trap("Insufficient stock for item: " # menuItem.name);
-          };
-          menuItems.add(item.menuItemId, { menuItem with stockQuantity = menuItem.stockQuantity - item.quantity });
-        };
-      };
-    };
   };
 
   public shared ({ caller }) func updateOrderStatus(orderId : Nat, status : OrderStatus) : async () {
@@ -382,34 +466,46 @@ actor {
     };
   };
 
-  public query ({ caller }) func getOrder(orderId : Nat) : async ?OrderEntry {
+  public query ({ caller }) func getOrder(orderId : Nat) : async ?OrderEntryWithCreator {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view orders");
     };
-    orders.get(orderId);
+    switch (orders.get(orderId)) {
+      case (null) { null };
+      case (?o) { ?toOrderEntryWithCreator(o) };
+    };
   };
 
-  public query ({ caller }) func getOrdersByStatus(status : OrderStatus) : async [OrderEntry] {
+  public query ({ caller }) func getOrdersByStatus(status : OrderStatus) : async [OrderEntryWithCreator] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view orders");
     };
-    orders.values().toArray().filter(func(order) { order.status == status });
+    orders.values().toArray().filter(func(order) { order.status == status }).map(toOrderEntryWithCreator);
   };
 
-  public query ({ caller }) func getOrdersInTimeRange(startTime : Int, endTime : Int) : async [OrderEntry] {
+  public query ({ caller }) func getOrdersInTimeRange(startTime : Int, endTime : Int) : async [OrderEntryWithCreator] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can view orders in time range");
     };
     orders.values().toArray().filter(
       func(order) { order.createdAt >= startTime and order.createdAt <= endTime }
-    );
+    ).map(toOrderEntryWithCreator);
   };
 
-  public query ({ caller }) func getAllOrders() : async [OrderEntry] {
+  public query ({ caller }) func getAllOrders() : async [OrderEntryWithCreator] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can view orders");
     };
-    orders.values().toArray().sort(OrderEntry.compareByCreatedAt);
+    orders.values().toArray().sort(OrderEntry.compareByCreatedAt).map(toOrderEntryWithCreator);
+  };
+
+  public query ({ caller }) func getOrdersByCreator(createdByEmail : Text) : async [OrderEntryWithCreator] {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view orders");
+    };
+    orders.values().toArray().filter(
+      func(order) { getCreator(order.id) == createdByEmail }
+    ).sort(OrderEntry.compareByCreatedAt).map(toOrderEntryWithCreator);
   };
 
   // ---- Reports (Admin Only) ----

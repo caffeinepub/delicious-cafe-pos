@@ -35,6 +35,7 @@ export interface OrderEntry {
     notes: string;
     items: Array<OrderItem>;
     orderNumber: bigint;
+    createdBy: string;
 }
 export interface UserProfile {
     name: string;
@@ -51,10 +52,16 @@ export interface AccountInfo {
     name: string;
     phone: string;
     principalId: string;
+    role: StaffRole;
 }
 export interface Category {
     id: bigint;
     name: string;
+}
+export interface CafeSettings {
+    name: string;
+    address: string;
+    phone: string;
 }
 export enum OrderStatus {
     inprogress = "inprogress",
@@ -66,39 +73,66 @@ export enum PaymentMethod {
     card = "card",
     cash = "cash"
 }
+export enum StaffRole {
+    admin = "admin",
+    cashier = "cashier",
+    kitchenStaff = "kitchenStaff"
+}
 export enum UserRole {
     admin = "admin",
     user = "user",
     guest = "guest"
 }
 export interface backendInterface {
+    // Authorization
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
-    createCategory(name: string): Promise<bigint>;
-    createMenuItem(name: string, categoryId: bigint, price: number, description: string): Promise<bigint>;
-    createOrder(items: Array<OrderItem>, paymentMethod: PaymentMethod, notes: string): Promise<bigint>;
-    deleteCategory(categoryId: bigint): Promise<void>;
-    deleteMenuItem(menuItemId: bigint): Promise<void>;
-    getAllCategories(): Promise<Array<Category>>;
-    getAllMenuItems(): Promise<Array<MenuItem>>;
-    getAllOrders(): Promise<Array<OrderEntry>>;
-    getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
-    getMenuItemsByCategory(categoryId: bigint): Promise<Array<MenuItem>>;
-    getOrdersByStatus(status: OrderStatus): Promise<Array<OrderEntry>>;
-    getOrdersInTimeRange(startTime: bigint, endTime: bigint): Promise<Array<OrderEntry>>;
-    getTopSellingItems(startTime: bigint, endTime: bigint, limit: bigint): Promise<Array<TopSellingItem>>;
-    getTotalRevenueInTimeRange(startTime: bigint, endTime: bigint): Promise<number>;
-    getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
-    saveCallerUserProfile(profile: UserProfile): Promise<void>;
-    toggleMenuItemAvailability(menuItemId: bigint): Promise<void>;
-    updateCategory(categoryId: bigint, name: string): Promise<void>;
-    updateMenuItem(menuItem: MenuItem): Promise<void>;
-    updateOrderNotes(orderId: bigint, notes: string): Promise<void>;
-    updateOrderStatus(orderId: bigint, status: OrderStatus): Promise<void>;
-    // Email/Password Auth
+
+    // Account management
+    hasAdminAccount(): Promise<boolean>;
     registerAccount(email: string, name: string, phone: string, passwordHash: string, principalId: string): Promise<string>;
+    adminCreateStaffAccount(email: string, name: string, phone: string, passwordHash: string, role: StaffRole): Promise<string>;
+    adminDeleteAccount(email: string): Promise<void>;
     verifyCredentials(email: string, passwordHash: string): Promise<boolean>;
+    getAccountRole(email: string): Promise<StaffRole | null>;
     adminResetPassword(email: string, newPasswordHash: string): Promise<void>;
     getAllAccounts(): Promise<Array<AccountInfo>>;
+
+    // Profile
+    getCallerUserProfile(): Promise<UserProfile | null>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
+
+    // Categories
+    createCategory(name: string): Promise<bigint>;
+    updateCategory(categoryId: bigint, name: string): Promise<void>;
+    deleteCategory(categoryId: bigint): Promise<void>;
+    getAllCategories(): Promise<Array<Category>>;
+
+    // Menu items
+    createMenuItem(name: string, categoryId: bigint, price: number, description: string): Promise<bigint>;
+    updateMenuItem(menuItem: MenuItem): Promise<void>;
+    deleteMenuItem(menuItemId: bigint): Promise<void>;
+    toggleMenuItemAvailability(menuItemId: bigint): Promise<void>;
+    getAllMenuItems(): Promise<Array<MenuItem>>;
+    getMenuItemsByCategory(categoryId: bigint): Promise<Array<MenuItem>>;
+
+    // Orders
+    createOrder(items: Array<OrderItem>, paymentMethod: PaymentMethod, notes: string, createdByEmail: string): Promise<bigint>;
+    updateOrderStatus(orderId: bigint, status: OrderStatus): Promise<void>;
+    updateOrderPaymentMethod(orderId: bigint, paymentMethod: PaymentMethod): Promise<void>;
+    updateOrderNotes(orderId: bigint, notes: string): Promise<void>;
+    getOrder(orderId: bigint): Promise<OrderEntry | null>;
+    getOrdersByStatus(status: OrderStatus): Promise<Array<OrderEntry>>;
+    getOrdersInTimeRange(startTime: bigint, endTime: bigint): Promise<Array<OrderEntry>>;
+    getAllOrders(): Promise<Array<OrderEntry>>;
+    getOrdersByCreator(createdByEmail: string): Promise<Array<OrderEntry>>;
+
+    // Reports
+    getTotalRevenueInTimeRange(startTime: bigint, endTime: bigint): Promise<number>;
+    getTopSellingItems(startTime: bigint, endTime: bigint, limit: bigint): Promise<Array<TopSellingItem>>;
+
+    // Cafe Settings
+    getCafeSettings(): Promise<CafeSettings>;
+    setCafeSettings(settings: CafeSettings): Promise<void>;
 }

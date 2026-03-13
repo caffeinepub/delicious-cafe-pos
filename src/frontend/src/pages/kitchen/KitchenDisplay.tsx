@@ -6,7 +6,6 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
 import { useActor } from "../../hooks/useActor";
-import { useEmailAuth } from "../../hooks/useEmailAuth";
 
 function playBeep() {
   try {
@@ -35,17 +34,18 @@ function timeAgo(nanoseconds: bigint): string {
 
 const DISMISS_DELAY = 30; // seconds
 
-export default function KitchenDisplay() {
+interface KitchenDisplayProps {
+  onLogout: () => void;
+}
+
+export default function KitchenDisplay({ onLogout }: KitchenDisplayProps) {
   const { actor } = useActor();
-  const { logout } = useEmailAuth();
   const qc = useQueryClient();
 
-  // Orders that the kitchen has locally "completed" — show countdown then hide
-  const [completingOrders, setCompletingOrders] = useState<
-    Map<string, number> // id -> timestamp when "Mark Complete" was clicked
-  >(new Map());
+  const [completingOrders, setCompletingOrders] = useState<Map<string, number>>(
+    new Map(),
+  );
 
-  // Tick every second to update countdowns
   const [, setTick] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 1000);
@@ -73,7 +73,6 @@ export default function KitchenDisplay() {
     refetchInterval: 5000,
   });
 
-  // Beep only on new *pending* orders
   const prevPendingIds = useRef<Set<string>>(new Set());
   const pendingInitialized = useRef(false);
 
@@ -114,7 +113,6 @@ export default function KitchenDisplay() {
       next.set(key, Date.now());
       return next;
     });
-    // Auto-remove from local view after DISMISS_DELAY seconds
     setTimeout(() => {
       setCompletingOrders((prev) => {
         const next = new Map(prev);
@@ -124,11 +122,9 @@ export default function KitchenDisplay() {
     }, DISMISS_DELAY * 1000);
   }
 
-  // Filter out orders being dismissed from ready list
   const visibleReadyOrders = readyOrders.filter(
     (o) => !completingOrders.has(o.id.toString()),
   );
-  // Orders in countdown
   const dismissingOrders = readyOrders.filter((o) =>
     completingOrders.has(o.id.toString()),
   );
@@ -293,12 +289,13 @@ export default function KitchenDisplay() {
         </span>
         <Button
           variant="ghost"
-          size="icon"
-          className="ml-auto"
+          size="sm"
           data-ocid="kitchen.logout.button"
-          onClick={logout}
+          onClick={onLogout}
+          className="ml-auto gap-1.5 text-muted-foreground hover:text-foreground"
         >
           <LogOut className="w-4 h-4" />
+          Sign Out
         </Button>
       </header>
 

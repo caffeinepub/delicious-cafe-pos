@@ -31,7 +31,6 @@ import {
 import { Input } from "../../components/ui/input";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { useActor } from "../../hooks/useActor";
-import { useEmailAuth } from "../../hooks/useEmailAuth";
 import { loadCafeSettings } from "../admin/CafeSettings";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -181,9 +180,17 @@ function ReceiptDialog({ order, paymentMethod, onClose }: ReceiptProps) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function CashierPage() {
+interface CashierPageProps {
+  onLogout: () => void;
+  currentUser: { email: string; name: string; role: string };
+}
+
+export default function CashierPage({
+  onLogout,
+  currentUser: _currentUser,
+}: CashierPageProps) {
   const { actor } = useActor();
-  const { logout } = useEmailAuth();
+
   const qc = useQueryClient();
 
   // ── Tab state ──
@@ -494,7 +501,7 @@ export default function CashierPage() {
           size="icon"
           className="ml-auto shrink-0"
           data-ocid="cashier.logout.button"
-          onClick={logout}
+          onClick={onLogout}
         >
           <LogOut className="w-4 h-4" />
         </Button>
