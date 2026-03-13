@@ -5,6 +5,7 @@ import {
   LogOut,
   Menu,
   Package,
+  Settings,
   Tag,
   Users,
   UtensilsCrossed,
@@ -13,6 +14,7 @@ import {
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { useEmailAuth } from "../../hooks/useEmailAuth";
+import CafeSettings from "./CafeSettings";
 import CategoryManagement from "./CategoryManagement";
 import Dashboard from "./Dashboard";
 import InventoryManagement from "./InventoryManagement";
@@ -26,7 +28,8 @@ type Tab =
   | "categories"
   | "inventory"
   | "reports"
-  | "users";
+  | "users"
+  | "settings";
 
 const navItems: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -35,6 +38,7 @@ const navItems: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "inventory", label: "Inventory", icon: Package },
   { id: "reports", label: "Sales Reports", icon: BarChart2 },
   { id: "users", label: "User Management", icon: Users },
+  { id: "settings", label: "Cafe Settings", icon: Settings },
 ];
 
 export default function AdminLayout() {
@@ -61,6 +65,8 @@ export default function AdminLayout() {
         return <SalesReports />;
       case "users":
         return <UserManagement />;
+      case "settings":
+        return <CafeSettings />;
     }
   };
 

@@ -1,6 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { DollarSign, ShoppingBag, TrendingUp } from "lucide-react";
+import {
+  DollarSign,
+  Download,
+  Search,
+  ShoppingBag,
+  TrendingUp,
+  X,
+} from "lucide-react";
 import { useState } from "react";
+import type { OrderEntry } from "../../backend";
 import { Button } from "../../components/ui/button";
 import {
   Card,
@@ -8,8 +16,15 @@ import {
   CardHeader,
   CardTitle,
 } from "../../components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { useActor } from "../../hooks/useActor";
+import { loadCafeSettings } from "./CafeSettings";
 
 type QuickFilter = "today" | "week" | "month" | "custom";
 
@@ -32,6 +47,109 @@ function getQuickRange(filter: QuickFilter): { start: string; end: string } {
   return { start: fmt(today), end: fmt(today) };
 }
 
+function fmtOrderNum(n: bigint) {
+  return `#${n.toString().padStart(3, "0")}`;
+}
+
+function exportCSV(orders: OrderEntry[]) {
+  const rows = [
+    ["Order #", "Date", "Items", "Total", "Payment", "Status"],
+    ...orders.map((o) => [
+      fmtOrderNum(o.orderNumber),
+      new Date(Number(o.createdAt / 1_000_000n)).toLocaleString(),
+      o.items.map((i) => `${i.itemName}x${i.quantity}`).join(" | "),
+      o.totalAmount.toFixed(2),
+      o.paymentMethod,
+      o.status,
+    ]),
+  ];
+  const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `sales-report-${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function OrderDetailDialog({
+  order,
+  onClose,
+}: { order: OrderEntry; onClose: () => void }) {
+  const cafe = loadCafeSettings();
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        data-ocid="reports.order_detail.dialog"
+        className="max-w-sm"
+      >
+        <DialogHeader>
+          <DialogTitle>Order {fmtOrderNum(order.orderNumber)}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="text-center border-b border-border pb-3">
+            <p className="font-bold text-base">{cafe.name || "Cafe"}</p>
+            {cafe.address && (
+              <p className="text-xs text-muted-foreground">{cafe.address}</p>
+            )}
+            {cafe.phone && (
+              <p className="text-xs text-muted-foreground">{cafe.phone}</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">
+              {new Date(Number(order.createdAt / 1_000_000n)).toLocaleString()}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            {order.items.map((it) => (
+              <div key={it.itemName} className="flex justify-between text-sm">
+                <span>
+                  {it.itemName}{" "}
+                  <span className="text-muted-foreground">
+                    x{it.quantity.toString()}
+                  </span>
+                </span>
+                <span className="font-medium">
+                  ${(it.unitPrice * Number(it.quantity)).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-border pt-2 flex justify-between font-bold">
+            <span>Total</span>
+            <span className="text-primary">
+              ${order.totalAmount.toFixed(2)}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Payment</span>
+            <span className="capitalize">{order.paymentMethod}</span>
+          </div>
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Status</span>
+            <span className="capitalize">{order.status}</span>
+          </div>
+          {order.notes && (
+            <div className="text-xs text-muted-foreground border-t border-border pt-2">
+              <span className="font-medium">Notes: </span>
+              {order.notes}
+            </div>
+          )}
+          <Button
+            variant="outline"
+            className="w-full mt-2"
+            data-ocid="reports.order_detail.close_button"
+            onClick={onClose}
+          >
+            <X className="w-4 h-4 mr-2" />
+            Close
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function SalesReports() {
   const { actor } = useActor();
   const todayStr = new Date().toISOString().split("T")[0];
@@ -39,6 +157,8 @@ export default function SalesReports() {
   const [endDate, setEndDate] = useState(todayStr);
   const [applied, setApplied] = useState({ start: todayStr, end: todayStr });
   const [activeFilter, setActiveFilter] = useState<QuickFilter>("today");
+  const [search, setSearch] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState<OrderEntry | null>(null);
 
   const applyQuickFilter = (filter: QuickFilter) => {
     setActiveFilter(filter);
@@ -80,6 +200,19 @@ export default function SalesReports() {
 
   const avg = orders.length > 0 ? revenue / orders.length : 0;
 
+  const filteredOrders = search.trim()
+    ? orders.filter((o) => {
+        const q = search.toLowerCase();
+        const numMatch =
+          fmtOrderNum(o.orderNumber).toLowerCase().includes(q) ||
+          o.orderNumber.toString().includes(q);
+        const itemMatch = o.items.some((i) =>
+          i.itemName.toLowerCase().includes(q),
+        );
+        return numMatch || itemMatch;
+      })
+    : orders;
+
   const quickFilters: { id: QuickFilter; label: string }[] = [
     { id: "today", label: "Today" },
     { id: "week", label: "This Week" },
@@ -91,8 +224,10 @@ export default function SalesReports() {
     <div className="space-y-5" data-ocid="reports.section">
       <Card>
         <CardContent className="p-4 space-y-3">
-          {/* Quick filter tabs */}
-          <div className="flex gap-2" data-ocid="reports.quickfilter.tab">
+          <div
+            className="flex gap-2 flex-wrap"
+            data-ocid="reports.quickfilter.tab"
+          >
             {quickFilters.map((f) => (
               <button
                 key={f.id}
@@ -110,7 +245,6 @@ export default function SalesReports() {
             ))}
           </div>
 
-          {/* Date pickers */}
           {activeFilter === "custom" && (
             <div className="flex flex-wrap gap-3 items-end">
               <div>
@@ -143,6 +277,17 @@ export default function SalesReports() {
               </Button>
             </div>
           )}
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              data-ocid="reports.search_input"
+              placeholder="Search by order # or item name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
         </CardContent>
       </Card>
 
@@ -198,9 +343,9 @@ export default function SalesReports() {
                 No data for this period.
               </p>
             ) : (
-              <ul className="space-y-2">
+              <div className="space-y-2">
                 {topItems.map((item) => (
-                  <li
+                  <div
                     key={item.name}
                     data-ocid="reports.topitem.item"
                     className="flex justify-between text-sm"
@@ -209,16 +354,28 @@ export default function SalesReports() {
                     <span className="text-primary font-semibold">
                       {item.totalQuantitySold.toString()}
                     </span>
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm">Order History</CardTitle>
+            {filteredOrders.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                data-ocid="reports.csv.button"
+                onClick={() => exportCSV(filteredOrders)}
+                className="h-7 text-xs"
+              >
+                <Download className="w-3 h-3 mr-1" />
+                CSV
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -228,27 +385,31 @@ export default function SalesReports() {
               >
                 Loading...
               </p>
-            ) : orders.length === 0 ? (
+            ) : filteredOrders.length === 0 ? (
               <p
                 data-ocid="reports.orders.empty_state"
                 className="text-muted-foreground text-sm"
               >
-                No orders in this period.
+                {search
+                  ? "No orders match your search."
+                  : "No orders in this period."}
               </p>
             ) : (
-              <ul className="space-y-2 max-h-60 overflow-y-auto">
-                {orders
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {filteredOrders
                   .slice()
                   .reverse()
                   .map((order, i) => (
-                    <li
+                    <button
+                      type="button"
                       key={order.id.toString()}
                       data-ocid={`reports.order.${i + 1}`}
-                      className="flex justify-between text-sm border-b border-border pb-2"
+                      className="w-full flex justify-between text-sm border-b border-border pb-2 cursor-pointer hover:bg-accent/50 rounded px-1 py-1 transition-colors text-left"
+                      onClick={() => setSelectedOrder(order)}
                     >
                       <div>
                         <span className="font-medium">
-                          #{order.orderNumber.toString()}
+                          #{order.orderNumber.toString().padStart(3, "0")}
                         </span>
                         <span className="ml-2 text-xs text-muted-foreground">
                           {new Date(
@@ -264,13 +425,20 @@ export default function SalesReports() {
                           {order.paymentMethod}
                         </span>
                       </div>
-                    </li>
+                    </button>
                   ))}
-              </ul>
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {selectedOrder && (
+        <OrderDetailDialog
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+        />
+      )}
     </div>
   );
 }

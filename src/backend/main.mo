@@ -103,6 +103,12 @@ actor {
     totalQuantitySold : Nat;
   };
 
+  public type CafeSettings = {
+    name : Text;
+    address : Text;
+    phone : Text;
+  };
+
   var nextMenuItemId = 1;
   var nextOrderId = 1;
   var nextCategoryId = 1;
@@ -113,9 +119,27 @@ actor {
   let userProfiles = Map.empty<Principal, UserProfile>();
   let userAccounts = Map.empty<Text, UserAccount>();
 
+  var cafeSettings : CafeSettings = {
+    name = "Delicious Cafe";
+    address = "";
+    phone = "";
+  };
+
+  // ---- Cafe Settings ----
+
+  public query (_) func getCafeSettings() : async CafeSettings {
+    cafeSettings;
+  };
+
+  public shared ({ caller }) func setCafeSettings(settings : CafeSettings) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
+      Runtime.trap("Unauthorized: Only admins can update cafe settings");
+    };
+    cafeSettings := settings;
+  };
+
   // ---- Email/Password Account Management ----
 
-  // Public registration: returns "" on success, error message on failure
   public shared (_) func registerAccount(email : Text, name : Text, phone : Text, passwordHash : Text, principalId : Text) : async Text {
     switch (userAccounts.get(email)) {
       case (?_) { return "Email already registered" };
@@ -133,7 +157,6 @@ actor {
     };
   };
 
-  // Public query to verify login credentials
   public query (_) func verifyCredentials(email : Text, passwordHash : Text) : async Bool {
     switch (userAccounts.get(email)) {
       case (null) { false };
@@ -141,7 +164,6 @@ actor {
     };
   };
 
-  // Admin only: reset a user's password hash
   public shared ({ caller }) func adminResetPassword(email : Text, newPasswordHash : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can reset passwords");
@@ -158,7 +180,6 @@ actor {
     };
   };
 
-  // Admin only: get all accounts (without password hashes)
   public query ({ caller }) func getAllAccounts() : async [AccountInfo] {
     if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
       Runtime.trap("Unauthorized: Only admins can view accounts");
@@ -341,6 +362,16 @@ actor {
     };
   };
 
+  public shared ({ caller }) func updateOrderPaymentMethod(orderId : Nat, paymentMethod : PaymentMethod) : async () {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can update orders");
+    };
+    switch (orders.get(orderId)) {
+      case (null) { Runtime.trap("Order not found") };
+      case (?order) { orders.add(orderId, { order with paymentMethod }) };
+    };
+  };
+
   public shared ({ caller }) func updateOrderNotes(orderId : Nat, notes : Text) : async () {
     if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
       Runtime.trap("Unauthorized: Only users can update order notes");
@@ -349,6 +380,13 @@ actor {
       case (null) { Runtime.trap("Order not found") };
       case (?order) { orders.add(orderId, { order with notes }) };
     };
+  };
+
+  public query ({ caller }) func getOrder(orderId : Nat) : async ?OrderEntry {
+    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
+      Runtime.trap("Unauthorized: Only users can view orders");
+    };
+    orders.get(orderId);
   };
 
   public query ({ caller }) func getOrdersByStatus(status : OrderStatus) : async [OrderEntry] {

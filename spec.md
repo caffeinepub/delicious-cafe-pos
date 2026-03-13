@@ -1,30 +1,35 @@
 # Delicious Cafe POS
 
 ## Current State
-CashierPage exists with: single order cart, category filter bar, menu grid, payment selection, printable receipt, and active orders strip. Backend supports createOrder, updateOrderStatus, getAllOrders, etc.
+- Full POS with auth, cashier ordering, kitchen display, inventory, billing, and sales history
+- Kitchen display polls every 5 seconds, plays beep on new orders, 3-column layout (Pending/Preparing/Ready)
+- Cashier page shows active orders with live status updates every 6 seconds
+- main.tsx incorrectly wraps app with InternetIdentityProvider instead of EmailAuthProvider (root cause of blank screens)
+- Backend statuses: pending → inprogress → done → paid
+- Kitchen currently marks 'done' orders as 'paid' (incorrect - cashier should do that)
+- No notification badge on cashier screen for ready/completed orders from kitchen
+- No 30-second fade-out for completed orders on kitchen display
 
 ## Requested Changes (Diff)
 
 ### Add
-- Multiple simultaneous open orders with tab switcher (e.g. Order #1, Order #2, + New)
-- Per-item note field in cart rows (e.g. "No sugar")
-- Order number badge (#001 style) visible on each order tab
-- Edit active order: cashier can reopen a Pending order back into the cart to modify it
+- Notification badge on Cashier active orders strip showing count of orders that are Ready (done status from kitchen)
+- 30-second countdown then auto-remove for orders marked as Ready (done) on Kitchen Display
+- Visual highlight on cashier order cards when kitchen marks order as Ready
 
 ### Modify
-- CashierPage: replace single-cart state with multi-tab order state
-- Cart panel: add per-item note input below each cart row
-- Active orders strip: allow clicking a Pending order to re-edit it in a tab
-- Place Order button: sends order and keeps tab open showing live status
+- Fix main.tsx: replace InternetIdentityProvider with EmailAuthProvider so auth works correctly
+- Kitchen Display: "Mark Complete" on Ready column should NOT set status to paid — it should trigger the 30-second fade-out UI only (status stays as 'done' until cashier marks paid)
+- OR: add a distinct completed visual state via local tracking in KitchenDisplay
+- Cashier order status badge: show 'Ready' label prominently (already exists as ORDER_STATUS_LABEL[done] = 'Ready') with a colored highlight/notification indicator
+- CashierPage notification badge: show count of active orders where kitchen has marked as Ready
 
 ### Remove
 - Nothing removed
 
 ## Implementation Plan
-1. Refactor CashierPage to use a `tabs` state: array of draft orders, each with id, items[], orderNote, and optional backend orderId + status
-2. Add tab bar above category filter: shows each open draft as a clickable tab + New Order button
-3. Add per-item note input in cart rows (small text field below item name/price)
-4. When Place Order is clicked: submit to backend, update tab state with returned orderId and poll status
-5. Allow switching between tabs without losing cart state
-6. Active orders section: clicking a Pending order loads it into a new editable tab
-7. Cancel clears tab; Mark Paid opens receipt dialog
+1. Fix main.tsx to use EmailAuthProvider instead of InternetIdentityProvider
+2. KitchenDisplay: when user clicks "Mark Complete" on a Ready order, keep status as 'done' but track in local state as 'completing'; show 30s countdown, then remove from view
+3. KitchenDisplay: ensure beep only on genuinely new (pending) orders arriving
+4. CashierPage: add notification badge (red count bubble) above/on the Active Orders section showing number of 'done' (Ready) orders
+5. CashierPage: highlight order cards that are in 'done' state with a distinct color (e.g., amber/orange border) so cashier sees them instantly

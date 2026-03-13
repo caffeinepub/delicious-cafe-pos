@@ -7,38 +7,38 @@
 @layer base {
   :root {
     --radius: 0.5rem;
-    --background: 0.14 0.018 45;
-    --foreground: 0.92 0.01 55;
-    --card: 0.19 0.02 45;
-    --card-foreground: 0.92 0.01 55;
-    --popover: 0.22 0.025 45;
-    --popover-foreground: 0.92 0.01 55;
-    --primary: 0.76 0.14 65;
-    --primary-foreground: 0.12 0.01 45;
-    --secondary: 0.24 0.02 45;
-    --secondary-foreground: 0.88 0.01 55;
-    --muted: 0.22 0.015 45;
-    --muted-foreground: 0.6 0.01 55;
-    --accent: 0.28 0.03 60;
-    --accent-foreground: 0.92 0.01 55;
+    --background: 0.97 0.005 80;
+    --foreground: 0.15 0.01 55;
+    --card: 1 0 0;
+    --card-foreground: 0.15 0.01 55;
+    --popover: 1 0 0;
+    --popover-foreground: 0.15 0.01 55;
+    --primary: 0.55 0.14 65;
+    --primary-foreground: 0.98 0.005 80;
+    --secondary: 0.93 0.01 80;
+    --secondary-foreground: 0.2 0.01 55;
+    --muted: 0.93 0.008 80;
+    --muted-foreground: 0.5 0.01 55;
+    --accent: 0.9 0.02 75;
+    --accent-foreground: 0.2 0.01 55;
     --destructive: 0.55 0.22 25;
     --destructive-foreground: 0.98 0 0;
-    --border: 1 0 0 / 12%;
-    --input: 1 0 0 / 10%;
-    --ring: 0.76 0.14 65;
-    --chart-1: 0.76 0.14 65;
-    --chart-2: 0.6 0.12 180;
-    --chart-3: 0.7 0.15 120;
-    --chart-4: 0.65 0.18 300;
-    --chart-5: 0.72 0.16 30;
-    --sidebar: 0.17 0.02 45;
-    --sidebar-foreground: 0.92 0.01 55;
-    --sidebar-primary: 0.76 0.14 65;
-    --sidebar-primary-foreground: 0.12 0.01 45;
-    --sidebar-accent: 0.22 0.02 45;
-    --sidebar-accent-foreground: 0.88 0.01 55;
-    --sidebar-border: 1 0 0 / 10%;
-    --sidebar-ring: 0.76 0.14 65;
+    --border: 0 0 0 / 12%;
+    --input: 0 0 0 / 10%;
+    --ring: 0.55 0.14 65;
+    --chart-1: 0.55 0.14 65;
+    --chart-2: 0.5 0.12 180;
+    --chart-3: 0.55 0.15 120;
+    --chart-4: 0.5 0.18 300;
+    --chart-5: 0.58 0.16 30;
+    --sidebar: 0.98 0.005 80;
+    --sidebar-foreground: 0.15 0.01 55;
+    --sidebar-primary: 0.55 0.14 65;
+    --sidebar-primary-foreground: 0.98 0.005 80;
+    --sidebar-accent: 0.93 0.01 80;
+    --sidebar-accent-foreground: 0.2 0.01 55;
+    --sidebar-border: 0 0 0 / 10%;
+    --sidebar-ring: 0.55 0.14 65;
   }
 
   * {

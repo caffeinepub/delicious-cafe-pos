@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Bell,
   CheckCircle,
   Coffee,
   LogOut,
@@ -31,6 +32,7 @@ import { Input } from "../../components/ui/input";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { useActor } from "../../hooks/useActor";
 import { useEmailAuth } from "../../hooks/useEmailAuth";
+import { loadCafeSettings } from "../admin/CafeSettings";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -102,6 +104,8 @@ interface ReceiptProps {
 }
 
 function ReceiptDialog({ order, paymentMethod, onClose }: ReceiptProps) {
+  const cafeSettings = loadCafeSettings();
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent data-ocid="cashier.receipt.dialog" className="max-w-sm">
@@ -113,8 +117,18 @@ function ReceiptDialog({ order, paymentMethod, onClose }: ReceiptProps) {
         </DialogHeader>
         <div id="receipt-printable" className="space-y-3">
           <div className="text-center border-b border-border pb-3">
-            <p className="font-bold text-lg">Delicious Cafe</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="font-bold text-lg">{cafeSettings.name || "Cafe"}</p>
+            {cafeSettings.address && (
+              <p className="text-xs text-muted-foreground">
+                {cafeSettings.address}
+              </p>
+            )}
+            {cafeSettings.phone && (
+              <p className="text-xs text-muted-foreground">
+                {cafeSettings.phone}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">
               {new Date(Number(order.createdAt / 1_000_000n)).toLocaleString()}
             </p>
             <p className="text-sm font-semibold mt-1">
@@ -257,6 +271,11 @@ export default function CashierPage() {
       o.status !== OrderStatus.paid
     );
   });
+
+  // Count of ready (done) orders for notification badge
+  const readyOrderCount = sessionOrders.filter(
+    (o) => o.status === OrderStatus.done,
+  ).length;
 
   // Live status for placed orders in tabs
   function getLiveOrder(orderId: bigint | null): OrderEntry | undefined {
@@ -581,68 +600,84 @@ export default function CashierPage() {
               className="border-t border-border bg-card/50 shrink-0"
               data-ocid="cashier.active-orders.section"
             >
-              <div className="px-3 pt-2 pb-1">
+              <div className="px-3 pt-2 pb-1 flex items-center gap-2">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Active Orders
                 </p>
+                {readyOrderCount > 0 && (
+                  <span
+                    data-ocid="cashier.ready-orders.toast"
+                    className="flex items-center gap-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+                  >
+                    <Bell className="w-2.5 h-2.5" />
+                    {readyOrderCount}
+                  </span>
+                )}
               </div>
               <div className="flex gap-2 px-3 pb-3 overflow-x-auto hide-scrollbar">
-                {sessionOrders.map((order, i) => (
-                  <div
-                    key={order.id.toString()}
-                    data-ocid={`cashier.active-order.item.${i + 1}`}
-                    className="min-w-[180px] max-w-[200px] bg-card border border-border rounded-xl p-3 shrink-0"
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-bold text-foreground">
-                        {fmtOrderNum(order.orderNumber)}
-                      </span>
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${statusColor(
-                          order.status,
-                        )}`}
-                      >
-                        {ORDER_STATUS_LABEL[order.status] ?? order.status}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-2">
-                      {order.items
-                        .map((it) => `${it.itemName} ×${it.quantity}`)
-                        .join(", ")}
-                    </p>
-                    <p className="text-sm font-bold text-primary mb-2">
-                      ${order.totalAmount.toFixed(2)}
-                    </p>
-                    <div className="flex gap-1.5">
-                      {order.status === OrderStatus.pending && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 h-7 text-xs border-destructive/50 text-destructive hover:bg-destructive/10"
-                          data-ocid={`cashier.active-order.cancel.${i + 1}`}
-                          disabled={cancelMut.isPending}
-                          onClick={() => cancelMut.mutate(order.id)}
+                {sessionOrders.map((order, i) => {
+                  const isReady = order.status === OrderStatus.done;
+                  return (
+                    <div
+                      key={order.id.toString()}
+                      data-ocid={`cashier.active-order.item.${i + 1}`}
+                      className={`min-w-[180px] max-w-[200px] bg-card border rounded-xl p-3 shrink-0 transition-all ${
+                        isReady
+                          ? "border-amber-400 border-l-4 border-l-amber-500 bg-amber-50/60 dark:bg-amber-500/5"
+                          : "border-border"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold text-foreground">
+                          {fmtOrderNum(order.orderNumber)}
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${statusColor(
+                            order.status,
+                          )}`}
                         >
-                          <XCircle className="w-3 h-3 mr-1" />
-                          Cancel
-                        </Button>
-                      )}
-                      {order.status === OrderStatus.done && (
-                        <Button
-                          size="sm"
-                          className="flex-1 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-0"
-                          data-ocid={`cashier.active-order.pay.${i + 1}`}
-                          onClick={() => {
-                            setPayDialogOrderId(order.id);
-                            setPayDialogMethod(PaymentMethod.cash);
-                          }}
-                        >
-                          Mark Paid
-                        </Button>
-                      )}
+                          {ORDER_STATUS_LABEL[order.status] ?? order.status}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mb-1.5 line-clamp-2">
+                        {order.items
+                          .map((it) => `${it.itemName} ×${it.quantity}`)
+                          .join(", ")}
+                      </p>
+                      <p className="text-sm font-bold text-primary mb-2">
+                        ${order.totalAmount.toFixed(2)}
+                      </p>
+                      <div className="flex gap-1.5">
+                        {order.status === OrderStatus.pending && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 h-7 text-xs border-destructive/50 text-destructive hover:bg-destructive/10"
+                            data-ocid={`cashier.active-order.cancel.${i + 1}`}
+                            disabled={cancelMut.isPending}
+                            onClick={() => cancelMut.mutate(order.id)}
+                          >
+                            <XCircle className="w-3 h-3 mr-1" />
+                            Cancel
+                          </Button>
+                        )}
+                        {order.status === OrderStatus.done && (
+                          <Button
+                            size="sm"
+                            className="flex-1 h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white border-0"
+                            data-ocid={`cashier.active-order.pay.${i + 1}`}
+                            onClick={() => {
+                              setPayDialogOrderId(order.id);
+                              setPayDialogMethod(PaymentMethod.cash);
+                            }}
+                          >
+                            Mark Paid
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
